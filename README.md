@@ -1,218 +1,131 @@
-# Doctrine Deprecations
+PHP Cron Expression Parser
+==========================
 
-A small (side-effect free by default) layer on top of
-`trigger_error(E_USER_DEPRECATED)` or PSR-3 logging.
+[![Latest Stable Version](https://poser.pugx.org/dragonmantank/cron-expression/v)](https://packagist.org/packages/dragonmantank/cron-expression) [![Total Downloads](https://poser.pugx.org/dragonmantank/cron-expression/downloads)](https://packagist.org/packages/dragonmantank/cron-expression) [![Tests](https://github.com/dragonmantank/cron-expression/actions/workflows/tests.yml/badge.svg)](https://github.com/dragonmantank/cron-expression/actions/workflows/tests.yml) [![StyleCI](https://github.styleci.io/repos/103715337/shield?branch=master)](https://github.styleci.io/repos/103715337)
 
-- no side-effects by default, making it a perfect fit for libraries that don't know how the error handler works they operate under
-- options to avoid having to rely on error handlers global state by using PSR-3 logging
-- deduplicate deprecation messages to avoid excessive triggering and reduce overhead
+The PHP cron expression parser can parse a CRON expression, determine if it is
+due to run, calculate the next run date of the expression, and calculate the previous
+run date of the expression.  You can calculate dates far into the future or past by
+skipping **n** number of matching dates.
 
-We recommend to collect Deprecations using a PSR logger instead of relying on
-the global error handler.
+The parser can handle increments of ranges (e.g. */12, 2-59/3), intervals (e.g. 0-9),
+lists (e.g. 1,2,3), **W** to find the nearest weekday for a given day of the month, **L** to
+find the last day of the month, **L** to find the last given weekday of a month, and hash
+(#) to find the nth weekday of a given month.
 
-## Usage from consumer perspective:
+More information about this fork can be found in the blog post [here](http://ctankersley.com/2017/10/12/cron-expression-update/). tl;dr - v2.0.0 is a major breaking change, and @dragonmantank can better take care of the project in a separate fork.
 
-Enable Doctrine deprecations to be sent to a PSR3 logger:
+Installing
+==========
 
-```php
-\Doctrine\Deprecations\Deprecation::enableWithPsrLogger($logger);
+Add the dependency to your project:
+
+```bash
+composer require dragonmantank/cron-expression
 ```
 
-Enable Doctrine deprecations to be sent as `@trigger_error($message, E_USER_DEPRECATED)`
-messages by setting the `DOCTRINE_DEPRECATIONS` environment variable to `trigger`.
-Alternatively, call:
-
+Usage
+=====
 ```php
-\Doctrine\Deprecations\Deprecation::enableWithTriggerError();
-```
-
-If you only want to enable deprecation tracking, without logging or calling `trigger_error`
-then set the `DOCTRINE_DEPRECATIONS` environment variable to `track`.
-Alternatively, call:
-
-```php
-\Doctrine\Deprecations\Deprecation::enableTrackingDeprecations();
-```
-
-Tracking is enabled with all three modes and provides access to all triggered
-deprecations and their individual count:
-
-```php
-$deprecations = \Doctrine\Deprecations\Deprecation::getTriggeredDeprecations();
-
-foreach ($deprecations as $identifier => $count) {
-    echo $identifier . " was triggered " . $count . " times\n";
-}
-```
-
-### Suppressing Specific Deprecations
-
-Disable triggering about specific deprecations:
-
-```php
-\Doctrine\Deprecations\Deprecation::ignoreDeprecations("https://link/to/deprecations-description-identifier");
-```
-
-Disable all deprecations from a package
-
-```php
-\Doctrine\Deprecations\Deprecation::ignorePackage("doctrine/orm");
-```
-
-### Other Operations
-
-When used within PHPUnit or other tools that could collect multiple instances of the same deprecations
-the deduplication can be disabled:
-
-```php
-\Doctrine\Deprecations\Deprecation::withoutDeduplication();
-```
-
-Disable deprecation tracking again:
-
-```php
-\Doctrine\Deprecations\Deprecation::disable();
-```
-
-## Usage from a library/producer perspective:
-
-When you want to unconditionally trigger a deprecation even when called
-from the library itself then the `trigger` method is the way to go:
-
-```php
-\Doctrine\Deprecations\Deprecation::trigger(
-    "doctrine/orm",
-    "https://link/to/deprecations-description",
-    "message"
-);
-```
-
-If variable arguments are provided at the end, they are used with `sprintf` on
-the message.
-
-```php
-\Doctrine\Deprecations\Deprecation::trigger(
-    "doctrine/orm",
-    "https://github.com/doctrine/orm/issue/1234",
-    "message %s %d",
-    "foo",
-    1234
-);
-```
-
-When you want to trigger a deprecation only when it is called by a function
-outside of the current package, but not trigger when the package itself is the cause,
-then use:
-
-```php
-\Doctrine\Deprecations\Deprecation::triggerIfCalledFromOutside(
-    "doctrine/orm",
-    "https://link/to/deprecations-description",
-    "message"
-);
-```
-
-Based on the issue link each deprecation message is only triggered once per
-request.
-
-A limited stacktrace is included in the deprecation message to find the
-offending location.
-
-Note: A producer/library should never call `Deprecation::enableWith` methods
-and leave the decision how to handle deprecations to application and
-frameworks.
-
-## Usage in PHPUnit tests
-
-There is a `VerifyDeprecations` trait that you can use to make assertions on
-the occurrence of deprecations within a test.
-
-```php
-use Doctrine\Deprecations\PHPUnit\VerifyDeprecations;
-
-class MyTest extends TestCase
-{
-    use VerifyDeprecations;
-
-    public function testSomethingDeprecation()
-    {
-        $this->expectDeprecationWithIdentifier('https://github.com/doctrine/orm/issue/1234');
-
-        triggerTheCodeWithDeprecation();
-    }
-
-    public function testSomethingDeprecationFixed()
-    {
-        $this->expectNoDeprecationWithIdentifier('https://github.com/doctrine/orm/issue/1234');
-
-        triggerTheCodeWithoutDeprecation();
-    }
-}
-```
-
-## Displaying deprecations after running a PHPUnit test suite
-
-It is possible to integrate this library with PHPUnit to display all
-deprecations triggered during the test suite execution.
-
-```xml
-<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         colors="true"
-         bootstrap="vendor/autoload.php"
-         displayDetailsOnTestsThatTriggerDeprecations="true"
-         failOnDeprecation="true"
-    >
-    <!-- one attribute to display the deprecations, the other to fail the test suite -->
-
-    <php>
-        <!-- ensures native PHP deprecations are used -->
-        <server name="DOCTRINE_DEPRECATIONS" value="trigger"/>
-    </php>
-
-    <!-- ensures the @ operator in @trigger_error is ignored -->
-    <source ignoreSuppressionOfDeprecations="true">
-        <include>
-            <directory>src</directory>
-        </include>
-    </source>
-</phpunit>
-```
-
-Note that you can still trigger Deprecations in your code, provided you use the
-`#[WithoutErrorHandler]` attribute to disable PHPUnit's error handler for tests
-that call it. Be wary that this will disable all error handling, meaning it
-will mask any warnings or errors that would otherwise be caught by PHPUnit.
-
-At the moment, it is not possible to disable deduplication with an environment
-variable, but you can use a bootstrap file to achieve that:
-
-```php
-// tests/bootstrap.php
 <?php
 
-declare(strict_types=1);
+require_once '/vendor/autoload.php';
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+// Works with predefined scheduling definitions
+$cron = new Cron\CronExpression('@daily');
+$cron->isDue();
+echo $cron->getNextRunDate()->format('Y-m-d H:i:s');
+echo $cron->getPreviousRunDate()->format('Y-m-d H:i:s');
 
-use Doctrine\Deprecations\Deprecation;
+// Works with complex expressions
+$cron = new Cron\CronExpression('3-59/15 6-12 */15 1 2-5');
+echo $cron->getNextRunDate()->format('Y-m-d H:i:s');
 
-Deprecation::withoutDeduplication();
+// Calculate a run date two iterations into the future
+$cron = new Cron\CronExpression('@daily');
+echo $cron->getNextRunDate(null, 2)->format('Y-m-d H:i:s');
+
+// Calculate a run date relative to a specific time
+$cron = new Cron\CronExpression('@monthly');
+echo $cron->getNextRunDate('2010-01-12 00:00:00')->format('Y-m-d H:i:s');
 ```
 
-Then, reference that file in your PHPUnit configuration:
+CRON Expressions
+================
 
-```xml
-<phpunit …
-        bootstrap="tests/bootstrap.php"
-        …
-    >
-    …
-</phpunit>
+A CRON expression is a string representing the schedule for a particular command to execute.  The parts of a CRON schedule are as follows:
+
+```
+*   *   *   *   *
+-   -   -   -   -
+|   |   |   |   |
+|   |   |   |   |
+|   |   |   |   +----- day of week (0-7) (Sunday = 0 or 7) (or SUN-SAT)
+|   |   |   +--------- month (1-12) (or JAN-DEC)
+|   |   +------------- day of month (1-31)
+|   +----------------- hour (0-23)
++--------------------- minute (0-59)
 ```
 
-## What is a deprecation identifier?
+Each part of expression can also use wildcard, lists, ranges and steps:
 
-An identifier for deprecations is just a link to any resource, most often a
-Github Issue or Pull Request explaining the deprecation and potentially its
-alternative.
+- wildcard - match always
+	- `* * * * *` - At every minute.
+	- day of week and day of month also support `?`, an alias to `*`
+- lists - match list of values, ranges and steps
+	- e.g. `15,30 * * * *` - At minute 15 and 30.
+- ranges - match values in range
+	- e.g. `1-9 * * * *` - At every minute from 1 through 9.
+- steps - match every nth value in range
+	- e.g. `*/5 * * * *` - At every 5th minute.
+	- e.g. `0-30/5 * * * *` - At every 5th minute from 0 through 30.
+- combinations
+	- e.g. `0-14,30-44 * * * *` - At every minute from 0 through 14 and every minute from 30 through 44.
+
+You can also use macro instead of an expression:
+
+- `@yearly`, `@annually` - At 00:00 on 1st of January. (same as `0 0 1 1 *`)
+- `@monthly` - At 00:00 on day-of-month 1. (same as `0 0 1 * *`)
+- `@weekly` - At 00:00 on Sunday. (same as `0 0 * * 0`)
+- `@daily`, `@midnight` - At 00:00. (same as `0 0 * * *`)
+- `@hourly` - At minute 0. (same as `0 * * * *`)
+
+Day of month extra features:
+
+- nearest weekday - weekday (Monday-Friday) nearest to the given day
+	- e.g. `* * 15W * *` - At every minute on a weekday nearest to the 15th.
+	- If you were to specify `15W` as the value, the meaning is: "the nearest weekday to the 15th of the month"
+	  So if the 15th is a Saturday, the trigger will fire on Friday the 14th.
+	  If the 15th is a Sunday, the trigger will fire on Monday the 16th.
+	  If the 15th is a Tuesday, then it will fire on Tuesday the 15th.
+	- However, if you specify `1W` as the value for day-of-month,
+	  and the 1st is a Saturday, the trigger will fire on Monday the 3rd,
+	  as it will not 'jump' over the boundary of a month's days.
+- last day of the month
+	- e.g. `* * L * *` - At every minute on a last day-of-month.
+- last weekday of the month
+	- e.g. `* * LW * *` - At every minute on a last weekday.
+
+Day of week extra features:
+
+- nth day
+	- e.g. `* * * * 7#4` - At every minute on 4th Sunday.
+	- 1-5
+	- Every day of week repeats 4-5 times a month. To target the last one, use "last day" feature instead.
+- last day
+	- e.g. `* * * * 7L` - At every minute on the last Sunday.
+
+Requirements
+============
+
+- PHP 7.2+
+- PHPUnit is required to run the unit tests
+- Composer is required to run the unit tests
+
+Projects that Use cron-expression
+=================================
+* Part of the [Laravel Framework](https://github.com/laravel/framework/)
+* Available as a [Symfony Bundle - setono/cron-expression-bundle](https://github.com/Setono/CronExpressionBundle)
+* Framework agnostic, PHP-based job scheduler - [Crunz](https://github.com/crunzphp/crunz)
+* Framework agnostic job scheduler - with locks, parallelism, per-second scheduling and more - [orisai/scheduler](https://github.com/orisai/scheduler)
+* Explain expression in English (and other languages) with [orisai/cron-expression-explainer](https://github.com/orisai/cron-expression-explainer)
